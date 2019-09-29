@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <style>
+body {font-family: Arial;}
+
+/* Style the tab */
+.tab {
+overflow: hidden;
+border: 1px solid #ccc;
+background-color: #f1f1f1;
+}
+
+/* Style the buttons inside the tab */
+.tab button {
+background-color: inherit;
+float: left;
+border: none;
+outline: none;
+cursor: pointer;
+padding: 14px 16px;
+transition: 0.3s;
+font-size: 17px;
+}
+
+/* Change background color of buttons on hover */
+.tab button:hover {
+background-color: #ddd;
+}
+
+/* Create an active/current tablink class */
+.tab button.active {
+background-color: #ccc;
+}
+
+/* Style the tab content */
+.tabcontent {
+display: none;
+padding: 6px 12px;
+border: 1px solid #ccc;
+border-top: none;
+}
+
+* {
+box-sizing: border-box;
+}
+
+/* Create two equal columns that floats next to each other */
+.column {
+float: left;
+width: 50%;
+padding: 10px;
+height: 400px; /* Should be removed. Only for demonstration */
+}
+
+/* Clear floats after the columns */
+.row:after {
+content: "";
+display: table;
+clear: both;
+}
+</style>
+</head>
+<body>
+
+   <div align="right">
+        <a href="{{ url_for('home') }}">Home</a>
+        {% if current_user.is_anonymous %}
+        <a href="{{ url_for('login') }}">Login</a>
+        {% else %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+        {% endif %}
+    </div>
+
+<img src="../static/JohnsonandJohnsonLogo.png" alt="J&J Logo" width="500" height="100">
+
+<div class="tab">
+   <button class="tablinks" onclick="openTab(event, 'Name Search')">Name Search</button>
+   <button class="tablinks" onclick="openTab(event, 'Keyword Search')">Keyword Search</button>
+</div>
+
+<div id="Name Search" class="tabcontent">
+   <form action = "{{ url_for('name_search') }}" method = "post">
+      <div>
+<h2 style="font-family:verdana; font-size:160%;">Search name:</h2>
+     </div>
+            <div>
+                <input type="text" placeholder="First Name" name="fn">
+                <input type="text" placeholder="Last Name" name="ln">
+                <p><input type = "submit" value = "submit" /></p>
+            </div>
+   </form>
+</div>
+
+<div id="Keyword Search" class="tabcontent">
+   <h3>Keyword Search</h3>
+   <form action = "{{ url_for('search') }}" method = "post">
+       <div>
+<p>Maximum Results: </p>
+<input type="range" name="max_res" min="0" max="200" value="20" step="10" oninput="this.form.amountMaxRes.value=this.value" />
+<input type="number" name="amountMaxRes" min="0" max="200" value="20" oninput="this.form.max_res.value=this.value" />
+<h2 style="font-family:verdana; font-size:160%;">Search name:</h2>
+     </div>
+      <div>
+          <p style="font-family:verdana; font-size:160%;">Enter Keyword:</p>
+          <p><input type = "text" name = "kw" placeholder="Keyword" /></p>
+          <p><input type = "submit" value = "submit" /></p>
+      </div>
+   </form>
+</div>
+
+<script>
+function openTab(evt, tabName) {
+var i, tabcontent, tablinks;
+tabcontent = document.getElementsByClassName("tabcontent");
+for (i = 0; i < tabcontent.length; i++) {
+tabcontent[i].style.display = "none";
+}
+tablinks = document.getElementsByClassName("tablinks");
+for (i = 0; i < tablinks.length; i++) {
+tablinks[i].className = tablinks[i].className.replace(" active", "");
+}
+document.getElementById(tabName).style.display = "block";
+evt.currentTarget.className += " active";
+}
+</script>
+
+<script>
+
+var values = [0, 10, 11, 20, 21, 22, 23, 24, 25, 26, 30, 31, 40, 41, 50, 51, 52, 53, 60, 61, 70, 71, 72, 80];
+
+var rangesliderMin = document.getElementById("sliderRangeMin");
+var outputMin = document.getElementById("demoMin");
+outputMin.innerHTML = values[rangesliderMin.value];
+
+rangesliderMin.oninput = function() {
+  outputMin.innerHTML = values[this.value];
+}
+
+var rangeslider = document.getElementById("sliderRange");
+var output = document.getElementById("demo");
+output.innerHTML = values[rangeslider.value];
+
+rangeslider.oninput = function() {
+  output.innerHTML = values[this.value];
+}
+
+</script>
+
+</body>
+</html>

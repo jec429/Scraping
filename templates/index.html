@@ -1,0 +1,59 @@
+<!--
+<img src="../static/JohnsonandJohnsonLogo.png" alt="J&J Logo" width="500" height="100">
+
+<div>
+{% if current_user.is_anonymous %}
+<a href="{{ url_for('login') }}">Login</a>
+{% else %}
+<a href="{{ url_for('main_search') }}">Main Search</a>
+{% endif %}
+</div>
+-->
+
+
+<!DOCTYPE html>
+<html>
+<title>J&J Resume Search</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway">
+<style>
+body,h1,h5 {font-family: "Raleway", sans-serif}
+body, html {height: 100%}
+.bgimg {
+  background: url("https://i.imgur.com/HFzaAfN.jpg");
+  min-height: 90%;
+  background-position: center;
+  background-size: cover;
+}
+
+
+</style>
+<body>
+<!--<div class="bgimg w3-display-container w3-text-red">
+  <div class="w3-display-middle w3-jumbo">
+    <p>logo</p>
+  </div>
+
+</div>-->
+
+<div class="bgimg w3-display-container w3-text-red">
+  <div class="w3-display-top w3-jumbo">
+<img src="../static/JohnsonandJohnsonLogo.png" alt="J&J Logo" width="500" height="100">
+</div>
+</div>
+
+<div class="bgimg2 w3-display-container w3-text-red">
+  <div class="w3-display-left w3-jumbo">
+        {% if current_user.is_anonymous %}
+<a href="{{ url_for('login') }}">Login</a>
+{% else %}
+<a href="{{ url_for('main_search') }}">Main Search</a>
+{% endif %}
+  </div>
+</div>
+
+
+</body>
+</html>
