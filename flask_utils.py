@@ -1,10 +1,15 @@
 from werkzeug.routing import BaseConverter
 from flask_login import UserMixin
 import json
+import pandas as pd
+import urllib.request
+import unicodedata
+from bs4 import BeautifulSoup
+import re
 
 
 def write_html(key, dict_values):
-    fn = open('./templates/key_results.html', 'w', encoding='utf-8')
+    fn = open('./templates/name_results.html', 'w', encoding='utf-8')
     string = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -22,22 +27,86 @@ window.history.back();
 </script>
 </h1>
     '''
+
     name = key.split('-')[1] + ' ' + key.split('-')[0]
     string += '<h2> Name:</h2>'
     string += name + '\n'
-    string += '<h2> Pubs:</h2><ul>'
-    for p in dict_values[0][1]:
-        string += '<li><a href="https://www.ncbi.nlm.nih.gov/pubmed/' + str(p) + '"> ' + str(p) + '</a></li>'
-    string += '</ul><h2> Pats:</h2><ul>'
-    for p in dict_values[1]:
+    string += '<h2> Affiliation:</h2><ul>'
+    for p in dict_values[0]:
+        string += '<li><p> ' + str(p).replace(',', '</p><p>') + '</p></li>'
+    string += '</ul><h2> Publications (' + str(len(dict_values[1])) + '):</h2><ul>'
+    publications = sorted(dict_values[1], reverse=True)
+    if len(publications) < 10:
+        for p in dict_values[1]:
+            string += '<li><a href="https://www.ncbi.nlm.nih.gov/pubmed/' + str(p) + '"> ' + str(p) + '</a></li>'
+    else:
+        for p in publications[:10]:
+            string += '<li><a href="https://www.ncbi.nlm.nih.gov/pubmed/' + str(p) + '"> ' + str(p) + '</a></li>'
+        string += '</ul><details><summary> See More </summary><ul>'
+        for p in publications[10:]:
+            string += '<li><a href="https://www.ncbi.nlm.nih.gov/pubmed/' + str(p) + '"> ' + str(p) + '</a></li>'
+        string += '</details>'
+
+    string += '</ul><h2> Patents:</h2><ul>'
+    print(key)
+    key2 = (unicodedata.normalize('NFD', key).encode('ascii', 'ignore')).decode("utf-8")
+    print(key2)
+    if ' ' in key2:
+        query = '"' + key2.replace('-', ' ') + '"'
+    else:
+        query = key2
+    url = 'http://patft.uspto.gov/netacgi/nph-Parser?Sect1=PTO2&Sect2=HITOFF&u=%2Fnetahtml%2FPTO%2F' \
+          'search-adv.htm&r=0&p=1&f=S&l=50&Query=IN%2F' + query + '&d=PTXT'
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req) as response:
+            the_page = response.read()
+        s1 = BeautifulSoup(the_page, 'html.parser')
+        patents = []
+        if s1.find(string=re.compile('No patents have matched your query')):
+            print('No results')
+        elif s1.find(string=re.compile('Single Document')):
+            #print('S1')
+            redirect = s1.find('meta').get('content').split('URL=')[1]
+            url2 = 'http://patft.uspto.gov/' + redirect
+            req = urllib.request.Request(url2)
+            with urllib.request.urlopen(req) as response:
+                the_page = response.read()
+            s2 = BeautifulSoup(the_page, 'html.parser')
+            strings = s2.title.string.split(' ')
+            patents.append(strings[-1])
+            # print(s2.find(string=re.compile('United States Patent:')).find_next().text.strip())
+        else:
+            total_results = int(s1.find(string=re.compile('out of')).find_next().text.strip()) - 1
+            print(total_results)
+            for i, l in enumerate(s1.find_all(valign='top')):
+                if i % 3 == 1:
+                    patents.append(l.text.split('>')[0].replace(',', ''))
+
+            # for j in range(int(total_results/50)):
+            #     # print(j)
+            #     j = str(j + 2)
+            #     ename = 'NextList'+j
+            #     next_button = driver.find_element_by_name(ename)
+            #     next_button.click()
+            #     sleep(0.5)
+            #     r2 = driver.page_source
+            #     s2 = BeautifulSoup(r2, 'html.parser')
+            #     #print(s2)
+            #     for i, l in enumerate(s2.find_all(valign='top')):
+            #         if i % 3 == 1:
+            #             patents.append(l.text.split('>')[0].replace(',', ''))
+
+    except:
+        patents = []
+
+    for p in patents:
         string += '<li><a href="http://patft.uspto.gov/netacgi/nph-Parser?Sect1=PTO1&Sect2=HITOFF&d=PALL&p=1&u=%2Fnet' \
                   'ahtml%2FPTO%2Fsrchnum.htm&r=1&f=G&l=50&s1='+str(p)+'.PN.&OS=PN/'+str(p)+'&RS=PN/'+str(p) + '"> ' + \
                   str(p) + '</a></li>'
     string += '</ul><h2> Top co-authors:</h2>'
-    string += '<h2> Affiliation:</h2><ul>'
-    for p in dict_values[0][0]:
-        string += '<li><p> ' + str(p).replace(',', '</p><p>') + '</p></li>'
-    string += '</ul><h2> Most cited pubs:</h2>'
+
+    string += '</ul><h2> Most cited publications:</h2>'
     # string += '<h2> Citations:</h2>'
 
     string += '''
@@ -48,6 +117,7 @@ window.history.back();
 
 
 def write_table(df):
+    fname = open('./templates/key_results.html', 'w', encoding='utf-8')
     columns = df.columns
     string = '''
     <!DOCTYPE html>
@@ -108,18 +178,34 @@ def write_table(df):
         string += '''<th class="fitwidth''' + str(i) + '''" style="cursor:pointer"> ''' + \
                   str(c) + '</th>\n'
     string += '</tr>\n'
+    df = df[:200]
     for vs in df.values:
         string += '<tr class="item">\n'
         for i, v in enumerate(vs):
             # print(i, v)
-            if i == 2 or i == 3:
+            if i == 0:
+                key = str(v).replace(', ', '-')
+                string += '''<td><a href="{{ url_for('cap_search', key =' ''' + key + ''' ') }}">''' + str(v) + '</a></td>'
+            elif i == 1:
+                if len(v) > 0:
+                    string += '<td>' + str(v[0]) + '</td>\n'
+                else:
+                    string += '<td> Not available </td>\n'
+            elif i == 2 or i == 3:
                 string += '<td><ul>'
+                lps = False
+                if len(v) > 10:
+                    ps = str(len(v))
+                    v = v[:10]
+                    lps = True
                 for v2 in v:
                     if v2 == -1:
-                        v3 = 0
+                        v3 = 'Not available'
                     else:
                         v3 = v2
                     string += '<li><a href="https://www.ncbi.nlm.nih.gov/pubmed/' + str(v3) + '">' + str(v3) + '</a></li>'
+                if lps:
+                    string += '<li><a> ... (' + ps + ') </a></li>'
                 string += '</ul></td>\n'
             else:
                 string += '<td>' + str(v) + '</td>\n'
@@ -179,7 +265,7 @@ def write_table(df):
     </body>
     </html>
     '''
-    return string
+    fname.write(string)
 
 
 def get_citations():
@@ -279,6 +365,37 @@ def worker(arg):
         max_res = 199
 
     return new_data
+
+
+def search_dataframe(arg):
+    keyword, num = arg
+    filename = './publication_files/publications_' + num + '.pkl'
+    # print(filename)
+    df = pd.read_pickle(filename)
+
+    if keyword != '':
+        return df[(df['title'].map(lambda x: keyword in x)) | (df['abstract'].map(lambda x: keyword in x))]
+    else:
+        return df
+
+
+def read_dataframe(df):
+    authors = {}
+    # df = df[:10]
+    # pudmid, title, abstract, authors, affiliations, url, citations
+    for p, au, af, c in zip(df['pudmid'], df['authors'], df['affiliations'], df['citations']):
+        for au2, af2 in zip(au, af):
+            key = au2
+            aff = af2
+            if key in authors.keys():
+                papers = authors[key][1]
+                papers.append(p)
+                citations = authors[key][2]
+                citations.append(c)
+                authors[key] = [aff, papers, citations]
+            else:
+                authors[key] = [aff, [p], [c]]
+    return authors
 
 
 class ListConverter(BaseConverter):

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import time
 import multiprocessing as mp
+from string import ascii_uppercase
 
 
 def read_authors(num):
@@ -116,11 +117,19 @@ def read_authors(num):
         json.dump(authors, json_file)
 
 
-def read_publication():
-    data = []
-    for fn in glob.glob('./database/pubmed19n0900.xml.gz')[:10]:
-        print(fn)
+def read_publication(num):
+    import os.path
 
+    for fn in glob.glob('./database/pubmed19n0*.xml.gz'):
+        ifile = fn.replace('\\', '/').split('n0')[1].split('.')[0]
+        fname = 'publications_' + str(ifile) + '.pkl'
+        if os.path.isfile(fname):
+            continue
+
+        # fn = './database/pubmed19n00'+str(num)+'.xml.gz'
+        fn = fn.replace('\\', '/')
+        print(fn)
+        data = []
         file_content = gzip.open(fn, 'r')
         tree = Et.parse(file_content)
 
@@ -150,17 +159,23 @@ def read_publication():
             at = t1.find('ArticleTitle')
             if at is None:
                 continue
-            title = at.text
+            if at.text is None:
+                continue
+            title = at.text.lower()
 
             ab = t1.find('Abstract')
-            if ab is None:
-                continue
-            abstract = ab.find('AbstractText').text
+            try:
+                abstract = ab.find('AbstractText').text.lower()
+            except:
+                abstract = ''
             cits = -1
             url = ''
             for d in t3:
                 if d.attrib['IdType'] == 'doi':
-                    url = 'http://doi.org/' + d.text
+                    if d.text is None:
+                        url = 'http://doi.org/'
+                    else:
+                        url = 'http://doi.org/' + d.text
 
             authors = []
             affiliations = []
@@ -174,26 +189,32 @@ def read_publication():
                 if af is not None:
                     for a in af:
                         # print(af, a.text)
-                        if len(a.text) > 100:
-                            aff.append(a.text[:100])
+                        if a.text is None:
+                            aff.append('')
                         else:
-                            aff.append(a.text)
+                            if len(a.text) > 100:
+                                aff.append(a.text[:100])
+                            else:
+                                aff.append(a.text)
                 if ln is None or fn is None:
+                    continue
+                if ln.text is None or fn.text is None:
                     continue
                 key = ln.text + '-' + fn.text.split(' ')[0]
                 authors.append(key)
                 affiliations.append(aff)
             #print('New article')
             #print(title, abstract, authors, affiliations, url)
+
             data.append([t2.text, title, abstract, authors, affiliations, url])
 
-    # print(data)
+        # print(data)
 
-    df = pd.DataFrame(np.array(data), columns=['pudmid', 'title', 'abstract', 'authors', 'affiliations', 'url'])
-    df['citations'] = -1
-    df.info()
-    df.to_pickle("./publications_9.pkl")
-    df.to_csv("./publications_9.csv", sep=',', encoding='utf-8')
+        df = pd.DataFrame(np.array(data), columns=['pudmid', 'title', 'abstract', 'authors', 'affiliations', 'url'])
+        df['citations'] = -1
+        df.info()
+        df.to_pickle('./publications_0'+str(ifile)+'.pkl')
+        #df.to_csv('./publications_0'+str(num)+'.csv', sep=',', encoding='utf-8')
 
 
 def get_citations(df):
@@ -275,41 +296,131 @@ def get_citations(df):
     # df['citations'] = cit2
     # df.to_pickle("./publications_9.pkl")
     #df.to_csv("./publications_9.csv", sep=',', encoding='utf-8')
+    driver.close()
     return df
 
 
 def read_dataframe():
+    for fn in glob.glob('./publication_files/publications_*.pkl'):
+        print(fn.split('_')[-1])
+        ifn = fn.split('_')[-1].split('.')[0]
+        start_time = time.time()
+        authors = {}
+        df = pd.read_pickle('./publication_files/publications_'+ifn+'.pkl')
+        df.info()
+        # df = df[:10]
+        # pudmid, title, abstract, authors, affiliations, url, citations
+        for p, au, af, c in zip(df['pudmid'], df['authors'], df['affiliations'], df['citations']):
+            key = ''
+            for au2, af2 in zip(au, af):
+                key = au2
+                aff = af2
+                if key in authors.keys():
+                    affiliation = authors[key][0]
+                    papers = authors[key][1]
+                    papers.append(p)
+                    citations = authors[key][2]
+                    citations.append(c)
+
+                    authors[key] = [aff, papers, citations]
+                else:
+                    authors[key] = [aff, [p], [c]]
+
+        print('Time =', time.time() - start_time)
+        # print(authors)
+        with open('./author_files/authors_'+ifn+'.json', 'w') as json_file:
+           json.dump(authors, json_file)
+
+
+def test_dataframe():
+    start_time = time.time()
+    keyword = 'brain cancer'
+
+    df = pd.read_pickle('publications_901.pkl')
+    # df.info()
+    # df1 = df[(df['title'].str.contains(keyword) | df['abstract'].str.contains(keyword))]
+    # print(df1.head())
+    # print('Time =', time.time() - start_time)
+    # start_time = time.time()
+    df2 = df[(df['title'].map(lambda x: keyword in x))]
+
+    print('Time =', time.time() - start_time)
+    start_time = time.time()
+    df5 = pd.read_pickle('publications_901.pkl')
+
+    df8 = df5[(df5['abstract'].map(lambda x: keyword in x))]
+
+    print('Time =', time.time() - start_time)
+    start_time = time.time()
+    df5 = pd.read_pickle('publications_901.pkl')
+
+    df8 = df5[(df5['title'].map(lambda x: keyword in x)) | (df5['abstract'].map(lambda x: keyword in x))]
+    print('Time =', time.time() - start_time)
+
+
+def merge_authors():
     authors = {}
-    df = pd.read_pickle('publications_9.pkl')
-    # df = df[:10]
-    # pudmid, title, abstract, authors, affiliations, url, citations
-    for p, t, a, au, af, u, c in zip(df['pudmid'], df['title'], df['abstract'], df['authors'], df['affiliations'], df['url'], df['citations']):
-        key = ''
-        for au2, af2 in zip(au, af):
-            key = au2
-            aff = af2
+    for fn in glob.glob('./author_files/authors_8*.json'):
+        print(fn)
+        with open(fn) as json_file:
+            data = json.load(json_file)
+
+        for key in data.keys():
+            [aff, p, c] = data[key]
             if key in authors.keys():
                 affiliation = authors[key][0]
                 papers = authors[key][1]
-                papers.append(p)
-                titles = authors[key][2]
-                titles.append(t)
-                abstracts = authors[key][3]
-                abstracts.append(a)
-                citations = authors[key][4]
-                citations.append(c)
-                urls = authors[key][5]
-                urls.append(u)
-                authors[key] = [aff, papers, titles, abstracts, citations, urls]
+                for p2 in p:
+                    papers.append(p2)
+                citations = authors[key][2]
+                for c2 in c:
+                    citations.append(c2)
+
+                authors[key] = [aff, papers, citations]
             else:
-                authors[key] = [aff, [p], [t], [a], [c], [u]]
-    # print(authors)
-    with open('authors_9.json', 'w') as json_file:
+                authors[key] = [aff, p, c]
+
+    with open('./author_files/authors_comb_8.json', 'w') as json_file:
         json.dump(authors, json_file)
 
 
+def split_by_key(ch):
+    import pickle
+    authors = {}
+    print(ch)
+    for fn in glob.glob('./author_files/authors_*.json'):
+        print(fn)
+        with open(fn) as json_file:
+            data = json.load(json_file)
+
+        for key in data.keys():
+            if key[0] != ch:
+                continue
+            [aff, p, c] = data[key]
+            if key in authors.keys():
+                affiliation = authors[key][0]
+                papers = authors[key][1]
+                for p2 in p:
+                    papers.append(p2)
+                citations = authors[key][2]
+                for c2 in c:
+                    citations.append(c2)
+
+                authors[key] = [aff, papers, citations]
+            else:
+                authors[key] = [aff, p, c]
+
+    # with open('./author_files/authors_comb_A.json', 'w') as json_file:
+    #     json.dump(authors, json_file)
+
+    with open('./author_files/authors_comb_'+ch+'.pkl', 'wb') as f:
+        pickle.dump(authors, f, pickle.HIGHEST_PROTOCOL)
+
+
 if __name__ == '__main__':
-    # read_publication()
+    # test_dataframe()
+
+    # read_publication(0)
     # for i in range(10):
     #     start = time.time()
     #     get_citations(i)
@@ -319,10 +430,12 @@ if __name__ == '__main__':
     #    read_authors(900+i)
 
     # read_dataframe()
-
-    for j in range(190, 300):
+    # merge_authors()
+    # for c in ascii_uppercase:
+    #    split_by_key(c)
+    for j in range(600):
         print(j)
-        df = pd.read_pickle('publications_9.pkl')
+        df = pd.read_pickle('./publication_files/publications_972.pkl')
         pool = mp.Pool(processes=(mp.cpu_count() - 1))
         i = 5 * j
         results = pool.map(get_citations, [df[:(i+1)*10],
@@ -334,5 +447,5 @@ if __name__ == '__main__':
         pool.join()
         results.append(df[(i+5)*10:])
         final_result = pd.concat(results)
-        final_result.to_pickle("./publications_9.pkl")
-        final_result.to_csv("./publications_9.csv", sep=',', encoding='utf-8')
+        final_result.to_pickle("./publication_files/publications_972.pkl")
+        final_result.to_csv("./publication_files/publications_972.csv", sep=',', encoding='utf-8')
