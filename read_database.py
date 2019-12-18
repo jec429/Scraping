@@ -7,6 +7,9 @@ from selenium import webdriver
 import numpy as np
 import pandas as pd
 import time
+import zipfile
+import itertools
+
 import multiprocessing as mp
 from string import ascii_uppercase
 
@@ -120,13 +123,13 @@ def read_authors(num):
 def read_publication(num):
     import os.path
 
-    for fn in glob.glob('./database/pubmed19n0*.xml.gz'):
+    for fn in glob.glob('./database/pubmed19n0972.xml.gz'):
         ifile = fn.replace('\\', '/').split('n0')[1].split('.')[0]
         fname = 'publications_' + str(ifile) + '.pkl'
         if os.path.isfile(fname):
             continue
 
-        # fn = './database/pubmed19n00'+str(num)+'.xml.gz'
+        #fn = './database/pubmed19n0'+str(num)+'.xml.gz'
         fn = fn.replace('\\', '/')
         print(fn)
         data = []
@@ -213,8 +216,8 @@ def read_publication(num):
         df = pd.DataFrame(np.array(data), columns=['pudmid', 'title', 'abstract', 'authors', 'affiliations', 'url'])
         df['citations'] = -1
         df.info()
-        df.to_pickle('./publications_0'+str(ifile)+'.pkl')
-        #df.to_csv('./publications_0'+str(num)+'.csv', sep=',', encoding='utf-8')
+        #df.to_pickle('./publications_'+str(ifile)+'.pkl')
+        df.to_csv('./publications_'+str(num)+'.csv', sep=',', encoding='utf-8')
 
 
 def get_citations(df):
@@ -417,10 +420,93 @@ def split_by_key(ch):
         pickle.dump(authors, f, pickle.HIGHEST_PROTOCOL)
 
 
+def pre_fetch(keyword):
+    # keyword, num = arg
+    results = []
+    for filename in glob.glob('./publication_files/publications_*.pkl'):
+        print(filename)
+        df = pd.read_pickle(filename)
+        results.append(df[(df['title'].map(lambda x: keyword in x)) | (df['abstract'].map(lambda x: keyword in x))])
+    joined_result = pd.concat(results)
+
+    joined_result.to_pickle('./publications_' + keyword + '.pkl')
+    joined_result.to_csv('./publications_' + keyword + '.csv', sep=',', encoding='utf-8')
+
+
+def get_publications(args):
+    df1, df2, df3, df4 = args
+    pubs = []
+    clinical_studies = []
+    patents = []
+    for p in df1['CORE_PROJECT_NUM']:
+        # print(p)
+        # print(df3[df3['PROJECT_NUMBER'].str.contains(p)]['PMID'].to_list())
+        pubs.append(df2[df2['PROJECT_NUMBER'].str.contains(p)]['PMID'].to_list())
+        clinical_studies.append(df3[df3['Core Project Number'].str.contains(p)]['ClinicalTrials.gov ID'].to_list())
+        patents.append(df4[df4['PROJECT_ID'].str.contains(p)]['PATENT_ID'].to_list())
+    # print(df3.shape[0])
+    # df3 = df3[df3['PROJECT_NUMBER'].str.contains(p)==False]
+    # iev += 1
+    return pubs, clinical_studies, patents
+
+
+def merge_nih(year):
+    df1 = pd.read_csv('database/nihdata/RePORTER_PRJ_C_FY'+str(year)+'.zip', encoding="ISO-8859-1")
+    df2 = pd.read_csv('database/nihdata/RePORTER_PRJABS_C_FY' + str(year) + '.zip', encoding="ISO-8859-1")
+    # Check for files in the future since there are publications that happen in the future years
+    df3 = pd.read_csv('database/nihdata/RePORTER_PUBLNK_C_' + str(year) + '.zip', encoding="ISO-8859-1")
+    df4 = pd.read_csv('database/nihdata/RePORTER_CLINICAL_STUDIES_C_ALL.zip', encoding="ISO-8859-1")
+    df5 = pd.read_csv('database/nihdata/RePORTER_PATENTS_C_ALL.zip', encoding="ISO-8859-1")
+    # df1.info()
+    # df2.info()
+    result = df1.merge(df2, on=['APPLICATION_ID'])
+    result.info()
+    df = result.fillna('N/A')
+    #df = df[:9000]
+
+    pool = mp.Pool(processes=(mp.cpu_count() - 1))
+    results = pool.map(get_publications, [(df[:10000], df3, df4, df5),
+                                          (df[10000:20000], df3, df4, df5),
+                                          (df[20000:30000], df3, df4, df5),
+                                          (df[30000:40000], df3, df4, df5),
+                                          (df[40000:50000], df3, df4, df5),
+                                          (df[50000:60000], df3, df4, df5),
+                                          (df[60000:70000], df3, df4, df5),
+                                          (df[70000:80000], df3, df4, df5),
+                                          (df[80000:], df3, df4, df5)
+                                          ])
+    pool.close()
+    pool.join()
+
+    pubs = results[0][0] + results[1][0] + results[2][0] + results[3][0] + results[4][0] + results[5][0] + results[6][0] + results[7][0] + results[8][0]
+    clinical_studies = results[0][1] + results[1][1] + results[2][1] + results[3][1] + results[4][1] + results[5][1] + results[6][1] + results[7][1] + results[8][1]
+    patents = results[0][2] + results[1][2] + results[2][2] + results[3][2] + results[4][2] + results[5][2] + results[6][2] + results[7][2] + results[8][2]
+
+    # pubs = list(itertools.chain.from_iterable(results))
+    # print(pubs)
+
+    # for p in test_df['CORE_PROJECT_NUM']:
+    #     if iev % 1000 == 0:
+    #         print('%d/%d' % (iev, test_df.shape[0]))
+    #     # print(p)
+    #     # print(df3[df3['PROJECT_NUMBER'].str.contains(p)]['PMID'].to_list())
+    #     pubs.append(df3[df3['PROJECT_NUMBER'].str.contains(p)]['PMID'].to_list())
+    #     print(df3.shape[0])
+    #     df3 = df3[df3['PROJECT_NUMBER'].str.contains(p)==False]
+    #     iev += 1
+    df['Publications'] = pubs
+    df['Clinical Studies'] = clinical_studies
+    df['Patents'] = patents
+    # df.to_csv('test_db.csv', sep=',', encoding='utf-8')
+    df.to_pickle('./project_files/projects_' + str(year) + '.pkl')
+
+
 if __name__ == '__main__':
     # test_dataframe()
-
-    # read_publication(0)
+    start = time.time()
+    # keyword = 'diabetic retinopathy'
+    # pre_fetch(keyword)
+    # read_publication(972)
     # for i in range(10):
     #     start = time.time()
     #     get_citations(i)
@@ -433,19 +519,23 @@ if __name__ == '__main__':
     # merge_authors()
     # for c in ascii_uppercase:
     #    split_by_key(c)
-    for j in range(600):
-        print(j)
-        df = pd.read_pickle('./publication_files/publications_972.pkl')
-        pool = mp.Pool(processes=(mp.cpu_count() - 1))
-        i = 5 * j
-        results = pool.map(get_citations, [df[:(i+1)*10],
-                                           df[(i+1)*10:(i+2)*10],
-                                           df[(i+2)*10:(i+3)*10],
-                                           df[(i+3)*10:(i+4)*10],
-                                           df[(i+4)*10:(i+5)*10]])
-        pool.close()
-        pool.join()
-        results.append(df[(i+5)*10:])
-        final_result = pd.concat(results)
-        final_result.to_pickle("./publication_files/publications_972.pkl")
-        final_result.to_csv("./publication_files/publications_972.csv", sep=',', encoding='utf-8')
+    # for j in range(100):
+    #     print(j)
+    #     df = pd.read_pickle('./publications_oncology.pkl')
+    #     pool = mp.Pool(processes=(mp.cpu_count() - 1))
+    #     i = 5 * j
+    #     results = pool.map(get_citations, [df[:(i+1)*10],
+    #                                        df[(i+1)*10:(i+2)*10],
+    #                                        df[(i+2)*10:(i+3)*10],
+    #                                        df[(i+3)*10:(i+4)*10],
+    #                                        df[(i+4)*10:(i+5)*10]])
+    #     pool.close()
+    #     pool.join()
+    #     results.append(df[(i+5)*10:])
+    #     final_result = pd.concat(results)
+    #     final_result.to_pickle("./publications_oncology.pkl")
+    #     final_result.to_csv("./publications_oncology.csv", sep=',', encoding='utf-8')
+
+    merge_nih(2018)
+
+    print(time.time() - start)

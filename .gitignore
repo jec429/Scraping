@@ -1,3 +1,8 @@
 *.json
 *.pkl
 *.xml
+/database/
+/elasticsearch-7.4.2-windows-x86_64/elasticsearch-7.4.2/
+/venv/
+/.idea/
+/publication_files/

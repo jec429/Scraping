@@ -73,14 +73,15 @@ clear: both;
         {% endif %}
     </div>
 
-<img src="../static/JohnsonandJohnsonLogo.png" alt="J&J Logo" width="500" height="100">
+    <img src="../static/JohnsonandJohnsonLogo.png" alt="J&J Logo" width="500" height="100">
 
-<div class="tab">
+    <div class="tab">
    <button class="tablinks" onclick="openTab(event, 'Name Search')">Name Search</button>
    <button class="tablinks" onclick="openTab(event, 'Keyword Search')">Keyword Search</button>
+        <button class="tablinks" onclick="openTab(event, 'Grant Search')">Grant Search</button>
 </div>
 
-<div id="Name Search" class="tabcontent">
+    <div id="Name Search" class="tabcontent">
    <form action = "{{ url_for('name_search') }}" method = "post">
       <div>
 <h2 style="font-family:verdana; font-size:160%;">Search name:</h2>
@@ -93,7 +94,7 @@ clear: both;
    </form>
 </div>
 
-<div id="Keyword Search" class="tabcontent">
+    <div id="Keyword Search" class="tabcontent">
    <h3>Keyword Search</h3>
    <form action = "{{ url_for('search') }}" method = "post">
        <div>
@@ -109,6 +110,25 @@ clear: both;
       </div>
    </form>
 </div>
+
+   <div id="Grant Search" class="tabcontent">
+   <h3>Keyword Search</h3>
+   <form action = "{{ url_for('newsearch') }}" method = "post">
+       <div>
+<p>Maximum Results: </p>
+<input type="range" name="max_res" min="0" max="200" value="20" step="10" oninput="this.form.amountMaxRes.value=this.value" />
+<input type="number" name="amountMaxRes" min="0" max="200" value="20" oninput="this.form.max_res.value=this.value" />
+<h2 style="font-family:verdana; font-size:160%;">Search name:</h2>
+     </div>
+      <div>
+          <p style="font-family:verdana; font-size:160%;">Enter Keyword:</p>
+          <p><input type = "text" name = "kw" placeholder="Keyword" /></p>
+          <p><input type = "submit" value = "submit" /></p>
+      </div>
+   </form>
+</div>
+
+
 
 <script>
 function openTab(evt, tabName) {

@@ -35,8 +35,18 @@ def keysearch(argus):
     # results = pool.map(worker, [(keyword, 9), (keyword, 901), (keyword, 902)]) #, (keyword, 903), (keyword, 904),
     #                            (keyword, 905), (keyword, 906), (keyword, 907), (keyword, 908), (keyword, 909)])
     # results = pool.map(worker, [(keyword, 9)])
-    big_search = True
-    if big_search:
+    big_search = False
+    if keyword == 'oncology':
+        joined_result = pd.read_pickle('./publications_oncology.pkl')
+        joined_result = joined_result.sort_values(by='pudmid', ascending=False)
+    elif keyword == 'melanoma':
+        joined_result = pd.read_pickle('./publications_melanoma.pkl')
+        joined_result = joined_result.sort_values(by='pudmid', ascending=False)
+    elif keyword == 'diabetic retinopathy':
+        joined_result = pd.read_pickle('./publications_diabetic_retinopathy.pkl')
+        joined_result = joined_result.sort_values(by='pudmid', ascending=False)
+
+    elif big_search:
         '''
         print('Results 0')
         result0 = pool.map(search_dataframe,
@@ -173,8 +183,7 @@ def keysearch(argus):
         pool.join()
 
         pool = mp.Pool(processes=(mp.cpu_count() - 1))
-        '''
-        '''
+
         print('Results 5')
         result5 = pool.map(search_dataframe,
                            [(keyword, '500'), (keyword, '501'), (keyword, '502'), (keyword, '503'), (keyword, '504'),
@@ -304,9 +313,9 @@ def keysearch(argus):
         pool.close()
         pool.join()
 
-        joined_result = pd.concat(#result0+result1+result2+result3+result4+
-                                  result9+result8
-                                  #+result7+result6+result5
+        joined_result = pd.concat(result9+result8
+                                  #+ result7+result6+result5
+                                  #+ result0+result1+result2+result3+result4
         )
     else:
         result = pool.map(search_dataframe,
@@ -348,7 +357,10 @@ def keysearch(argus):
                 h += 1
         h_indices.append(h)
 
-    df['Name'] = df['Name'].str.replace('-', ', ')
+    df['Name'] = df['Name'].str.replace('-', '; ')
+    df['Name'] = df['Name'].str.replace("'", '')
+    df['Name'] = df['Name'].str.replace(',', ';')
+
     df['Index'] = h_indices
     # df = df.sort_values(by=['Index'], ascending=False)
     if max_res < 200:
@@ -362,6 +374,65 @@ def keysearch(argus):
     else:
         write_table(df)
         return render_template('key_results.html')
+        # return string
+
+
+@app.route('/nkresult/<list:argus>')
+@login_required
+def newkeysearch(argus):
+    import time
+    print(argus)
+    keyword, max_res = argus
+    max_res = int(max_res)
+    start_time = time.time()
+
+    pool = mp.Pool(processes=(mp.cpu_count() - 1))
+
+    result = pool.map(search_new_dataframe,
+                      [(keyword, '2018')
+                       ])
+    pool.close()
+    pool.join()
+
+    joined_result = pd.concat(result)
+
+    joined_dict = read_new_dataframe(joined_result)
+
+    print('Time=', time.time() - start_time)
+    df = pd.DataFrame.from_dict(joined_dict, orient='index', columns=['Affiliation', 'Projects', 'Publications',
+                                                                      'Total Costs', 'Clinical Studies', 'Patents'])
+
+    df['Name'] = df.index
+    df['Name'] = df['Name'].str.replace(';', '')
+    df['Name'] = df['Name'].str.replace(',', ';')
+    print('Shape 1=', df.shape[0])
+    # df['Z'] = [sum(x) for x in df['Citations']]
+    df['Z'] = [sum([float(y) for y in x if y != 'N/A']) for x in df['Total Costs']]
+    df = df.sort_values(by=['Z'], ascending=False)
+    df = df[['Name', 'Affiliation', 'Projects', 'Total Costs', 'Publications', 'Clinical Studies', 'Patents']]
+
+    # h_indices = []
+    # for c in df['Publications']:
+    #     h = 0
+    #     for i, p in enumerate(sorted(c, reverse=True)):
+    #         if p > i:
+    #             h += 1
+    #     h_indices.append(h)
+
+    df['Name'] = df['Name'].str.replace('-', ', ')
+    # df['Index'] = h_indices
+    # df = df.sort_values(by=['Index'], ascending=False)
+    if max_res < 200:
+        df = df[:max_res]
+    else:
+        df = df
+    # df = df.drop('Citations', axis=1)
+    if df.shape[0] == 0:
+        return "<html><body><h1>Keyword not found!</h1><h1><button onclick='goBack()'>Go Back</button><script>function \
+        goBack() {window.history.back();}</script></h1></body></html>"
+    else:
+        write_new_table(df)
+        return render_template('new_key_results.html')
         # return string
 
 
@@ -399,6 +470,17 @@ def search():
         max_res = request.form['max_res']
         # return redirect(url_for('cap_search', argus=[fn, ln, max_res]))
         return redirect(url_for('keysearch', argus=[kw, max_res]))
+
+
+@app.route('/newsearch', methods=['POST', 'GET'])
+def newsearch():
+    if request.method == 'POST':
+        # fn = request.form['fn'].replace('/', ' ')
+        # ln = request.form['ln'].replace('/', ' ')
+        kw = request.form['kw']
+        max_res = request.form['max_res']
+        # return redirect(url_for('cap_search', argus=[fn, ln, max_res]))
+        return redirect(url_for('newkeysearch', argus=[kw, max_res]))
 
 
 @app.route('/name_search', methods=['POST', 'GET'])
