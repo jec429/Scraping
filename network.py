@@ -3,8 +3,7 @@ import pandas as pd
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 
-esclient = Elasticsearch(['localhost:9202'])
-
+esclient = Elasticsearch(['localhost:9200'])
 df = pd.read_pickle('./publication_files/publications_902.pkl')
 print(df.shape[0])
 string = ''
@@ -40,6 +39,7 @@ for d in df2.values:
 
 helpers.bulk(esclient, actions)
 
+start_time = time.time()
 
 response = esclient.search(
     index='pubs-index',
@@ -58,7 +58,9 @@ response = esclient.search(
     }
 )
 
-print(response['hits']['total']['value'], 'took=', response['took'])
+# print(response['hits']['total']['value'], 'took=', response['took'])
+print(response['hits']['hits'][0], 'took=', response['took'])
+print('took=', time.time() - start_time)
 
 start_time = time.time()
 df = pd.read_pickle('./publication_files/publications_900.pkl')

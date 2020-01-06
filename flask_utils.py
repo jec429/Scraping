@@ -1,11 +1,13 @@
-from werkzeug.routing import BaseConverter
-from flask_login import UserMixin
 import json
-import pandas as pd
-import urllib.request
-import unicodedata
-from bs4 import BeautifulSoup
 import re
+import unicodedata
+import urllib.request
+
+import pandas as pd
+from bs4 import BeautifulSoup
+from elasticsearch import helpers
+from flask_login import UserMixin
+from werkzeug.routing import BaseConverter
 
 
 def write_html(key, dict_values):
@@ -362,7 +364,7 @@ def write_new_table(df):
                     string += '<li><a> ... (' + ps + ') </a></li>'
                 string += '</ul></td>\n'
             elif i == 4:
-                print(v)
+                #print(v)
                 string += '<td>'
                 for v2 in v:
                     string += str(len(v2)) + ','
@@ -578,7 +580,7 @@ def read_new_dataframe(df):
     # pudmid, title, abstract, authors, affiliations, url, citations
     for p, au, af, c, tc, cs, pat in zip(df['APPLICATION_ID'], df['PI_NAMEs'], df['ORG_NAME'], df['Publications'],
                                          df['TOTAL_COST'], df['Clinical Studies'], df['Patents']):
-        print(p, au, af, c, tc)
+        # print(p, au, af, c, tc)
         if len(au) < 5:
             continue
         key = au
@@ -600,6 +602,114 @@ def read_new_dataframe(df):
     return authors
 
 
+def read_new_esdataframe(df):
+    authors = {}
+    # df = df[:10]
+    # pudmid, title, abstract, authors, affiliations, url, citations
+    for p, au, af, c, tc, cs, pat in zip(df['APPLICATION_ID'], df['AUTHOR'], df['AFFILIATION'], df['Publications'],
+                                         df['FUNDING'], df['Clinical Studies'], df['Patents']):
+        # print(p, au, af, c, tc)
+        if len(au) < 5:
+            continue
+        key = au
+        aff = af
+        if key in authors.keys():
+            projects = authors[key][1]
+            projects.append(p)
+            publications = authors[key][2]
+            publications.append(c)
+            total_costs = authors[key][3]
+            total_costs.append(tc)
+            clinical_studies = authors[key][4]
+            clinical_studies.append(cs)
+            patents = authors[key][5]
+            patents.append(pat)
+            authors[key] = [aff, projects, publications, total_costs, clinical_studies, patents]
+        else:
+            authors[key] = [aff, [p], [c], [tc], [cs], [pat]]
+    return authors
+
+
+def init_projects_indices(esclient):
+    if not esclient:
+        return
+    df = pd.read_pickle('./project_files/projects_2018.pkl')
+    print(df.shape[0])
+    string = ''
+    df2 = df
+    actions = []
+    for d in df2.values:
+        action = {
+            "_index": "projs-index",
+            "_type": "projects",
+            "_id": d[0],
+            "_source": {
+                'APPLICATION_ID': d[0],
+                'PROJECT_TITLE': d[35],
+                'ABSTRACT_TEXT': d[-4],
+                'PI_NAMEs': d[30],
+                'ORG_NAME': d[25],
+                'Publications': d[-3],
+                'TOTAL_COST': d[-6] if isinstance(d[-6], float) else -1,
+                'Clinical Studies': d[-2],
+                'Patents': d[-1]
+            }
+        }
+
+        actions.append(action)
+
+    helpers.bulk(esclient, actions)
+
+
+def project_elasticsearch(esclient, keyword, max_res):
+    if not esclient:
+        return
+    response = esclient.search(
+        index='projs-index',
+        body={
+            "query": {
+                # "bool": {
+                #     "must": [
+                #         { "match": { "age": "40" } }
+                #     ],
+                #     "must_not": [
+                #         { "match": { "state": "ID" } }
+                #     ]
+                # }
+                "multi_match": {
+                    "query": keyword,
+                    "fields": ["ABSTRACT_TEXT", "PROJECT_TITLE"],
+                }
+            },
+            "size": 10000
+        }
+    )
+
+    print(response['hits']['total'], 'took=', response['took'])
+    print(response['hits']['hits'][0], 'took=', response['took'])
+
+    df = pd.DataFrame(columns=['SCORE', 'APPLICATION_ID', 'AUTHOR', 'AFFILIATION', 'FUNDING', 'Publications',
+                               'Clinical Studies', 'Patents'])
+
+    for hit in response['hits']['hits']:
+        # print(hit['_score'], hit['_source']['APPLICATION_ID'])
+        df = df.append({'SCORE': hit['_score'],
+                        'APPLICATION_ID': hit['_source']['APPLICATION_ID'],
+                        'AUTHOR': hit['_source']['PI_NAMEs'],
+                        'AFFILIATION': hit['_source']['ORG_NAME'],
+                        # 'Publications': d[-3],
+                        'FUNDING': hit['_source']['TOTAL_COST'],
+                        'Publications': hit['_source']['Publications'],
+                        'Clinical Studies': hit['_source']['Clinical Studies'],
+                        'Patents': hit['_source']['Patents']
+
+                        }, ignore_index=True)
+
+    # print(df.head())
+    return df
+    # return response['hits']
+
+
 class ListConverter(BaseConverter):
 
     def to_python(self, value):
@@ -608,21 +718,6 @@ class ListConverter(BaseConverter):
     def to_url(self, values):
         return '+'.join(BaseConverter.to_url(self, value)
                         for value in values)
-
-
-# silly user model
-class User(UserMixin):
-    # proxy for a database of users
-    user_database = {"jchaves": ("jchaves", "Lvck7a2k"),
-                     "guest": ("guest", "DVKGakRP3s")}
-
-    def __init__(self, username, password):
-        self.id = username
-        self.password = password
-
-    @classmethod
-    def get(cls, uid):
-        return cls.user_database.get(uid)
 
 
 if __name__ == '__main__':

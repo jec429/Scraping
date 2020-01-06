@@ -1,20 +1,34 @@
 import numpy as np
-from flask import Flask, redirect, url_for, render_template, request, Response, abort
-from flask_login import LoginManager, login_required, login_user, logout_user
+from flask import Flask, redirect, url_for, render_template, request, Response, abort, flash
+from flask_login import LoginManager, login_required, login_user, logout_user, UserMixin
 from flask_utils import *
 import json
+from werkzeug.security import generate_password_hash, check_password_hash
+
 import pickle
 import pandas as pd
 import multiprocessing as mp
+from flask_sqlalchemy import SQLAlchemy
 
 
 app = Flask(__name__)
+app.secret_key = b'\x9aU\xa7\x9a}\xf2Q|FA\xbfN\x86,PN'
 app.url_map.converters['list'] = ListConverter
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+db = SQLAlchemy(app)
 
 # flask-login
 login_manager = LoginManager()
-login_manager.init_app(app)
 login_manager.login_view = "login"
+login_manager.init_app(app)
+
+
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)  # primary keys are required by SQLAlchemy
+    username = db.Column(db.String(100), unique=True)
+    password = db.Column(db.String(100))
+    # name = db.Column(db.String(1000))
 
 
 @app.route('/')
@@ -501,33 +515,28 @@ def main_search():
 
 
 # somewhere to login
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user_entry = User.get(username)
-        if user_entry is not None:
-            user = User(user_entry[0], user_entry[1])
-            if user.password == password:
-                login_user(user)
-                return redirect(url_for('main_search'))
-            else:
-                return abort(401)
-        else:
-            return abort(401)
-    else:
-        return Response('''
-        <form action="" method="post">
-            Username:<br>
-            <p><input type=text name=username>
-            <br>
-            Password:<br>
-            <p><input type=password name=password>
-            <br><br>
-            <p><input type=submit value=Login>
-        </form>
-        ''')
+    return render_template('login.html')
+
+
+@app.route("/login", methods=["POST"])
+def login_post():
+    username = request.form['username']
+    password = request.form['pass']
+    remember = True if request.form.get('remember') else False
+
+    user = User.query.filter_by(username=username).first()
+
+    # check if user actually exists
+    # take the user supplied password, hash it, and compare it to the hashed password in database
+    if not user or not check_password_hash(user.password, password):
+        flash('Please check your login details and try again.')
+        return redirect(url_for('login'))  # if user doesn't exist or password is wrong, reload the page
+
+    # if the above check passes, then we know the user has the right credentials
+    login_user(user, remember=remember)
+    return redirect(url_for('main_search'))
 
 
 # somewhere to logout
@@ -544,11 +553,37 @@ def page_not_found():
     return render_template('login_failed.html')
 
 
-# callback to reload the user object
 @login_manager.user_loader
-def load_user(username):
-    user_entry = User.get(username)
-    return User(user_entry[0], user_entry[1])
+def load_user(user_id):
+    # since the user_id is just the primary key of our user table, use it in the query for the user
+    return User.query.get(int(user_id))
+
+
+@app.route('/signup')
+def signup():
+    return render_template('signup.html')
+
+
+@app.route('/signup', methods=['POST'])
+def signup_post():
+    username = request.form.get('username')
+    password = request.form.get('pass')
+
+    user = User.query.filter_by(username=username).first()  # if this returns a user, then the email already exists in database
+
+    if user:  # if a user is found, we want to redirect back to signup page so user can try again
+        flash('Username already exists')
+        return redirect(url_for('signup'))
+
+    # create new user with the form data. Hash the password so plaintext version isn't saved.
+    new_user = User(username=username, password=generate_password_hash(password))
+    print(new_user.username)
+
+    # add the new user to the database
+    db.session.add(new_user)
+    db.session.commit()
+
+    return redirect(url_for('login'))
 
 
 if __name__ == '__main__':

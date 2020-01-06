@@ -1,0 +1,30 @@
+<html>
+<head>
+<title>Login Form Design</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<body>
+    <div class="loginbox">
+    <img src="static/avatar.png" class="avatar">
+        <h1>Login Here</h1>
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="notification is-danger">
+                {{ messages[0] }}
+            </div>
+        {% endif %}
+        {% endwith %}
+        <form action="" method="post">
+            <p>Username</p>
+            <input type="text" name="username" placeholder="Enter Username">
+            <p>Password</p>
+            <input type="password" name="pass" placeholder="Enter Password">
+            <input type="submit" name="" value="Login">
+<!--            <a href="#">Lost your password?</a><br>-->
+            <a href="{{ url_for('signup') }}">Don't have an account?</a>
+        </form>
+        
+    </div>
+
+</body>
+</head>
+</html>
